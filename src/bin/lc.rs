@@ -11,8 +11,17 @@ fn main() {
         Some(target) => all_file_path(target),
         None => all_file_path("./"),
     };
+    fn contain(f: &PathBuf, s: &Vec<String>) -> bool {
+        let filename = f.file_name().map(|f| f.to_str());
+        match filename {
+            Some(Some(f)) => s.iter().any(|s| f.contains(s.as_str())),
+            _ => false,
+        }
+    }
     let count = target.iter().fold(0, |mut acc, f| {
-        if f.extension().map(|f| f.to_str()) == Some(Some(&cli.extension)) {
+        if f.extension().map(|f| f.to_str()) == Some(Some(&cli.extension))
+            && !contain(f, &cli.ignored)
+        {
             acc += read_to_string(f).unwrap().lines().count();
         };
         acc
@@ -26,7 +35,7 @@ struct Cli {
     #[clap(short, long)]
     target: Option<String>,
     #[clap(short, long, value_delimiter = ',')]
-    ignored: Option<Vec<String>>,
+    ignored: Vec<String>,
 }
 
 #[cfg(not(target_os = "windows"))]
