@@ -12,9 +12,9 @@ fn main() {
         None => all_file_path("./"),
     };
     fn contain(f: &PathBuf, s: &Vec<String>) -> bool {
-        let filename = f.file_name().map(|f| f.to_str());
+        let filename = f.to_str().map(|f| f);
         match filename {
-            Some(Some(f)) => s.iter().any(|s| f.contains(s.as_str())),
+            Some(f) => s.iter().any(|s| f.contains(s.as_str())),
             _ => false,
         }
     }
