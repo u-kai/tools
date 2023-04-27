@@ -29,14 +29,14 @@ fn print_prompt() {
 }
 
 fn parse_prompt_line(line: String) {
-    match run_command(line) {
+    match run_command(line.as_str()) {
         Ok(()) => (),
-        Err(e) => println!("error : {:#?}", e.to_string()),
+        Err(e) => println!("error : {} command \n {:#?}", line, e.to_string()),
     }
 }
 
-fn run_command(line: String) -> Result<(), Box<dyn std::error::Error>> {
-    let commands = tokenize(&line);
+fn run_command(line: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let commands = tokenize(line.trim_end());
     let mut commands = commands.into_iter();
     let Some(command) = &commands.next() else {
         return Ok(())
