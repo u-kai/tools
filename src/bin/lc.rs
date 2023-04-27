@@ -1,5 +1,5 @@
 use std::{
-    fs::read_to_string,
+    fs::{read_dir, read_to_string},
     path::{Path, PathBuf},
 };
 
@@ -11,13 +11,6 @@ fn main() {
         Some(target) => all_file_path(target),
         None => all_file_path("./"),
     };
-    fn contain(f: &PathBuf, s: &Vec<String>) -> bool {
-        let filename = f.to_str().map(|f| f);
-        match filename {
-            Some(f) => s.iter().any(|s| f.contains(s.as_str())),
-            _ => false,
-        }
-    }
     let count = target.iter().fold(0, |mut acc, f| {
         if f.extension().map(|f| f.to_str()) == Some(Some(&cli.extension))
             && !contain(f, &cli.ignored)
@@ -28,8 +21,12 @@ fn main() {
     });
     println!("line is {}", count);
 }
+fn contain(f: &PathBuf, s: &Vec<String>) -> bool {
+    let filename = f.to_str().unwrap_or_default();
+    s.iter().any(|s| filename.contains(s.as_str()))
+}
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 struct Cli {
     extension: String,
     #[clap(short, long)]
@@ -38,12 +35,8 @@ struct Cli {
     ignored: Vec<String>,
 }
 
-#[cfg(not(target_os = "windows"))]
-pub const SEPARATOR: &'static str = r#"/"#;
-#[cfg(any(target_os = "windows", feature = "test_win"))]
-pub const SEPARATOR: &'static str = "\\";
 pub fn all_file_path(root_dir_path: impl AsRef<Path>) -> Vec<PathBuf> {
-    match std::fs::read_dir(root_dir_path.as_ref()) {
+    match read_dir(root_dir_path.as_ref()) {
         Ok(root_dir) => root_dir
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| match entry.file_type() {
