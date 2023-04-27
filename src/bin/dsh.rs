@@ -31,12 +31,13 @@ fn print_prompt() {
 fn parse_prompt_line(line: String) {
     match run_command(line) {
         Ok(()) => (),
-        Err(e) => println!("{:#?}", e),
+        Err(e) => println!("error : {:#?}", e.to_string()),
     }
 }
 
 fn run_command(line: String) -> Result<(), Box<dyn std::error::Error>> {
-    let mut commands = line.trim_end().split(" ");
+    let commands = tokenize(&line);
+    let mut commands = commands.into_iter();
     let Some(command) = &commands.next() else {
         return Ok(())
     };
@@ -63,4 +64,85 @@ fn run_command(line: String) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+fn tokenize(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut quote_char = None;
+    let mut escape = false;
+
+    for ch in input.chars() {
+        match ch {
+            '\\' => {
+                if escape {
+                    token.push(ch);
+                    escape = false;
+                } else {
+                    escape = true;
+                }
+            }
+            '"' | '\'' => {
+                if escape {
+                    token.push(ch);
+                    escape = false;
+                } else if quote_char == Some(ch) {
+                    quote_char = None;
+                    tokens.push(token);
+                    token = String::new();
+                } else if quote_char.is_none() {
+                    quote_char = Some(ch);
+                } else {
+                    token.push(ch);
+                }
+            }
+            ' ' | '\t' if quote_char.is_none() => {
+                if !token.is_empty() {
+                    tokens.push(token);
+                    token = String::new();
+                }
+                escape = false;
+            }
+            _ => {
+                if escape {
+                    escape = false;
+                }
+                token.push(ch);
+            }
+        }
+    }
+
+    if !token.is_empty() {
+        tokens.push(token);
+    }
+
+    tokens
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::tokenize;
+
+    #[test]
+    fn test_gpt() {
+        let input =
+            r#"This is 'a test' of "quoted strings" and unquoted strings. \"escaped quotes\""#;
+
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                "This",
+                "is",
+                "a test",
+                "of",
+                "quoted strings",
+                "and",
+                "unquoted",
+                "strings.",
+                r#""escaped"#,
+                r#"quotes""#
+            ]
+        );
+    }
 }
