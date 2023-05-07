@@ -31,17 +31,19 @@ impl Cli {
             .unwrap_or_else(|| TargetDir::default().all_file_path());
 
         target.iter().fold(0, |mut acc, f| {
-            if self.extension.is(f)
-                && !&self
-                    .ignored
-                    .as_ref()
-                    .map(|i| i.iter().any(|i| i.do_ignore(f)))
-                    .unwrap_or_default()
-            {
+            if self.is_count_target(f) {
                 acc += read_to_string(f).unwrap().lines().count();
             };
             acc
         })
+    }
+    fn is_count_target(&self, f: &PathBuf) -> bool {
+        self.extension.is(f)
+            && !&self
+                .ignored
+                .as_ref()
+                .map(|i| i.iter().any(|i| i.do_ignore(f)))
+                .unwrap_or_default()
     }
 }
 
