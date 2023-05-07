@@ -24,7 +24,6 @@ struct Cli {
 
 impl Cli {
     fn count_line(&self) -> usize {
-        println!("{:#?}", self.ignored);
         let target = self
             .target
             .as_ref()
@@ -189,6 +188,34 @@ mod tests {
         let count = cli.count_line();
         remove_dir(dir);
         assert_eq!(count, 2);
+    }
+    #[test]
+    fn cliはディレクトリおよび拡張子および無視するパスの設定を指定できる() {
+        let cli = Cli::parse_from(&[
+            "lc",
+            "-e",
+            "rs",
+            "-t",
+            "src",
+            "-i",
+            "main.rs, main.py, lib.rs",
+        ]);
+        assert_eq!(cli.extension, Extension("rs".to_string()));
+        assert_eq!(cli.target, Some(TargetDir(PathBuf::from("src"))));
+        assert_eq!(
+            cli.ignored,
+            Some(vec![
+                IgnorePath {
+                    path: "main.rs".to_string()
+                },
+                IgnorePath {
+                    path: "main.py".to_string()
+                },
+                IgnorePath {
+                    path: "lib.rs".to_string()
+                }
+            ])
+        );
     }
     #[test]
     fn target_dirはwindows_osも対応できる() {
