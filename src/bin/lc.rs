@@ -22,7 +22,7 @@ enum SubCli {
     #[clap(name = "ln")]
     CountLine {
         #[clap(short, long)]
-        extension: Extension,
+        extension: Option<Extension>,
         #[clap(short, long)]
         target: Option<TargetDir>,
         #[clap(short, long, value_delimiter = ',')]
@@ -31,7 +31,7 @@ enum SubCli {
     #[clap(name = "ch")]
     CountChars {
         #[clap(short, long)]
-        extension: Extension,
+        extension: Option<Extension>,
         #[clap(short, long)]
         target: Option<TargetDir>,
         #[clap(short, long, value_delimiter = ',')]
@@ -40,13 +40,13 @@ enum SubCli {
 }
 
 struct CommonCliConfig {
-    extension: Extension,
+    extension: Option<Extension>,
     target: Option<TargetDir>,
     ignored: Option<Vec<IgnorePath>>,
 }
 impl CommonCliConfig {
     fn new(
-        extension: Extension,
+        extension: Option<Extension>,
         target: Option<TargetDir>,
         ignored: Option<Vec<IgnorePath>>,
     ) -> Self {
@@ -81,7 +81,7 @@ impl CommonCliConfig {
             .collect()
     }
     fn is_count_target(&self, f: &PathBuf) -> bool {
-        self.extension.is(f)
+        self.extension.as_ref().map(|e| e.is(f)).unwrap_or(true)
             && !&self
                 .ignored
                 .as_ref()
@@ -263,6 +263,15 @@ mod tests {
         assert_eq!(cli.exe_count(), 2)
     }
     #[test]
+    #[ignore = "watchで無限ループになる"]
+    fn ディレクトリ内の行数をカウントする() {
+        let dir = "test_dir";
+        remove_dir(dir);
+        make_test_dir(dir);
+        let cli = Cli::parse_from(&["lc", "ln", "-t", dir]);
+        assert_eq!(cli.exe_count(), 3)
+    }
+    #[test]
     fn cliはディレクトリおよび拡張子および無視するパスの設定を指定できる() {
         let cli = Cli::parse_from(&[
             "lc",
@@ -280,7 +289,7 @@ mod tests {
                 target,
                 ignored,
             } => {
-                assert_eq!(extension, Extension("rs".to_string()));
+                assert_eq!(extension.unwrap(), Extension("rs".to_string()));
                 assert_eq!(target, Some(TargetDir(PathBuf::from("src"))));
                 assert_eq!(
                     ignored,
