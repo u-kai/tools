@@ -8,16 +8,7 @@ use clap::Parser;
 
 fn main() {
     let cli = Cli::parse();
-    let target = match &cli.target {
-        Some(target) => all_file_path(target),
-        None => all_file_path("./"),
-    };
-    let count = target.iter().fold(0, |mut acc, f| {
-        if cli.extension.is(f) && !&cli.ignored.contain(f) {
-            acc += read_to_string(f).unwrap().lines().count();
-        };
-        acc
-    });
+    let count = cli.count_line();
     println!("line is {}", count);
 }
 
@@ -26,11 +17,56 @@ struct Cli {
     #[clap(short, long)]
     extension: Extension,
     #[clap(short, long)]
-    target: Option<String>,
+    target: Option<TargetDir>,
     #[clap(short, long, value_delimiter = ',')]
-    ignored: IgnorePath,
+    ignored: Option<IgnorePath>,
 }
 
+impl Cli {
+    fn count_line(&self) -> usize {
+        let target = self
+            .target
+            .as_ref()
+            .map(|t| t.all_file_path())
+            .unwrap_or_else(|| TargetDir::default().all_file_path());
+
+        target.iter().fold(0, |mut acc, f| {
+            if self.extension.is(f)
+                && !&self
+                    .ignored
+                    .as_ref()
+                    .map(|i| i.contain(&f))
+                    .unwrap_or_default()
+            {
+                acc += read_to_string(f).unwrap().lines().count();
+            };
+            acc
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TargetDir(PathBuf);
+
+impl TargetDir {
+    fn all_file_path(&self) -> Vec<PathBuf> {
+        all_file_path(&self.0)
+    }
+}
+
+impl Default for TargetDir {
+    fn default() -> Self {
+        let current_dir = std::env::current_dir().unwrap();
+        Self(current_dir)
+    }
+}
+
+impl FromStr for TargetDir {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(PathBuf::from(s)))
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 struct Extension(String);
 impl Extension {
@@ -100,6 +136,52 @@ pub fn all_file_path(root_dir_path: impl AsRef<Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "watchで無限ループになる"]
+    fn cliはディレクトリ内の指定した拡張子の行数をカウントする() {
+        let dir = "test_dir";
+        remove_dir(dir);
+        let cli = Cli::parse_from(&["lc", "-e", "rs", "-t", dir]);
+        fn make_test_dir(dir_name: &str) {
+            std::fs::create_dir_all(dir_name).unwrap();
+            std::fs::write(format!("{}/main.rs", dir_name), "fn main() {}").unwrap();
+            std::fs::write(format!("{}/lib.rs", dir_name), "fn lib() {}").unwrap();
+            std::fs::write(format!("{}/main.py", dir_name), "def main(): pass").unwrap();
+        }
+        fn remove_dir(dir_name: &str) {
+            let path: &Path = dir_name.as_ref();
+            if path.exists() {
+                std::fs::remove_dir_all(dir_name).unwrap();
+            }
+        }
+        make_test_dir(dir);
+        let count = cli.count_line();
+        remove_dir(dir);
+        assert_eq!(count, 2);
+    }
+    #[test]
+    fn target_dirはwindows_osも対応できる() {
+        let target = TargetDir::from_str("C:\\Users\\user\\Desktop\\rust\\lc");
+        assert_eq!(
+            target,
+            Ok(TargetDir(PathBuf::from(
+                "C:\\Users\\user\\Desktop\\rust\\lc"
+            )))
+        );
+    }
+    #[test]
+    fn target_defaultはカレントディレクトリを返す() {
+        let target = TargetDir::default();
+        assert_eq!(
+            target,
+            TargetDir(PathBuf::from(std::env::current_dir().unwrap()))
+        );
+    }
+    #[test]
+    fn targetは文字列から生成できる() {
+        let target = TargetDir::from_str("src");
+        assert_eq!(target, Ok(TargetDir(PathBuf::from("src"))));
+    }
     #[test]
     fn extensionは文字列から生成できる() {
         let extension = Extension::from_str("rs");
