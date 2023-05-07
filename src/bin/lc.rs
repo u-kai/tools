@@ -4,38 +4,81 @@ use std::{
     str::FromStr,
 };
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 fn main() {
     let cli = Cli::parse();
-    let count = cli.count_line();
-    println!("line is {}", count);
+    cli.exe();
 }
 
 #[derive(Parser)]
 struct Cli {
-    #[clap(short, long)]
-    extension: Extension,
-    #[clap(short, long)]
-    target: Option<TargetDir>,
-    #[clap(short, long, value_delimiter = ',')]
-    ignored: Option<Vec<IgnorePath>>,
+    #[clap(subcommand)]
+    sub: SubCli,
 }
 
-impl Cli {
-    fn count_line(&self) -> usize {
-        let target = self
-            .target
-            .as_ref()
-            .map(|t| t.all_file_path())
-            .unwrap_or_else(|| TargetDir::default().all_file_path());
+#[derive(Subcommand)]
+enum SubCli {
+    #[clap(name = "ln")]
+    CountLine {
+        #[clap(short, long)]
+        extension: Extension,
+        #[clap(short, long)]
+        target: Option<TargetDir>,
+        #[clap(short, long, value_delimiter = ',')]
+        ignored: Option<Vec<IgnorePath>>,
+    },
+    #[clap(name = "ch")]
+    CountChars {
+        #[clap(short, long)]
+        extension: Extension,
+        #[clap(short, long)]
+        target: Option<TargetDir>,
+        #[clap(short, long, value_delimiter = ',')]
+        ignored: Option<Vec<IgnorePath>>,
+    },
+}
 
-        target.iter().fold(0, |mut acc, f| {
+struct CommonCliConfig {
+    extension: Extension,
+    target: Option<TargetDir>,
+    ignored: Option<Vec<IgnorePath>>,
+}
+impl CommonCliConfig {
+    fn new(
+        extension: Extension,
+        target: Option<TargetDir>,
+        ignored: Option<Vec<IgnorePath>>,
+    ) -> Self {
+        Self {
+            extension,
+            target,
+            ignored,
+        }
+    }
+    fn count_line(&self) -> usize {
+        self.target_paths().iter().fold(0, |mut acc, f| {
             if self.is_count_target(f) {
                 acc += read_to_string(f).unwrap().lines().count();
             };
             acc
         })
+    }
+    fn count_chars(&self) -> usize {
+        self.target_paths().iter().fold(0, |mut acc, f| {
+            if self.is_count_target(f) {
+                acc += read_to_string(f).unwrap().chars().count();
+            };
+            acc
+        })
+    }
+    fn target_paths(&self) -> Vec<PathBuf> {
+        self.target
+            .as_ref()
+            .map(|t| t.all_file_path())
+            .unwrap_or_else(|| TargetDir::default().all_file_path())
+            .into_iter()
+            .collect()
     }
     fn is_count_target(&self, f: &PathBuf) -> bool {
         self.extension.is(f)
@@ -44,6 +87,38 @@ impl Cli {
                 .as_ref()
                 .map(|i| i.iter().any(|i| i.do_ignore(f)))
                 .unwrap_or_default()
+    }
+}
+
+impl Cli {
+    fn exe(self) {
+        self.exe_count();
+    }
+    fn exe_count(self) -> usize {
+        match self.sub {
+            SubCli::CountChars {
+                extension,
+                target,
+                ignored,
+            } => {
+                let config =
+                    CommonCliConfig::new(extension.clone(), target.clone(), ignored.clone());
+                let count = config.count_chars();
+                println!("chars is {}", count);
+                count
+            }
+            SubCli::CountLine {
+                extension,
+                target,
+                ignored,
+            } => {
+                let config =
+                    CommonCliConfig::new(extension.clone(), target.clone(), ignored.clone());
+                let count = config.count_line();
+                println!("line is {}", count);
+                count
+            }
+        }
     }
 }
 
@@ -156,6 +231,7 @@ mod tests {
         remove_dir(dir);
         let cli = Cli::parse_from(&[
             "lc",
+            "ln",
             "-e",
             "rs",
             "-t",
@@ -164,37 +240,33 @@ mod tests {
             "main.rs, main.py, lib.rs",
         ]);
         make_test_dir(dir);
-        let count = cli.count_line();
+        let count = cli.exe_count();
         remove_dir(dir);
         assert_eq!(count, 0);
     }
     #[test]
     #[ignore = "watchで無限ループになる"]
-    fn cliはディレクトリ内の指定した拡張子の行数をカウントする() {
+    fn ディレクトリ内の指定した拡張子の文字数をカウントする() {
         let dir = "test_dir";
         remove_dir(dir);
-        let cli = Cli::parse_from(&["lc", "-e", "rs", "-t", dir]);
-        fn make_test_dir(dir_name: &str) {
-            std::fs::create_dir_all(dir_name).unwrap();
-            std::fs::write(format!("{}/main.rs", dir_name), "fn main() {}").unwrap();
-            std::fs::write(format!("{}/lib.rs", dir_name), "fn lib() {}").unwrap();
-            std::fs::write(format!("{}/main.py", dir_name), "def main(): pass").unwrap();
-        }
-        fn remove_dir(dir_name: &str) {
-            let path: &Path = dir_name.as_ref();
-            if path.exists() {
-                std::fs::remove_dir_all(dir_name).unwrap();
-            }
-        }
         make_test_dir(dir);
-        let count = cli.count_line();
+        let cli = Cli::parse_from(&["lc", "ch", "-e", "rs", "-t", dir]);
+        assert_eq!(cli.exe_count(), 23);
+    }
+    #[test]
+    #[ignore = "watchで無限ループになる"]
+    fn ディレクトリ内の指定した拡張子の行数をカウントする() {
+        let dir = "test_dir";
         remove_dir(dir);
-        assert_eq!(count, 2);
+        make_test_dir(dir);
+        let cli = Cli::parse_from(&["lc", "ln", "-e", "rs", "-t", dir]);
+        assert_eq!(cli.exe_count(), 2)
     }
     #[test]
     fn cliはディレクトリおよび拡張子および無視するパスの設定を指定できる() {
         let cli = Cli::parse_from(&[
             "lc",
+            "ln",
             "-e",
             "rs",
             "-t",
@@ -202,22 +274,31 @@ mod tests {
             "-i",
             "main.rs, main.py, lib.rs",
         ]);
-        assert_eq!(cli.extension, Extension("rs".to_string()));
-        assert_eq!(cli.target, Some(TargetDir(PathBuf::from("src"))));
-        assert_eq!(
-            cli.ignored,
-            Some(vec![
-                IgnorePath {
-                    path: "main.rs".to_string()
-                },
-                IgnorePath {
-                    path: "main.py".to_string()
-                },
-                IgnorePath {
-                    path: "lib.rs".to_string()
-                }
-            ])
-        );
+        match cli.sub {
+            SubCli::CountLine {
+                extension,
+                target,
+                ignored,
+            } => {
+                assert_eq!(extension, Extension("rs".to_string()));
+                assert_eq!(target, Some(TargetDir(PathBuf::from("src"))));
+                assert_eq!(
+                    ignored,
+                    Some(vec![
+                        IgnorePath {
+                            path: "main.rs".to_string()
+                        },
+                        IgnorePath {
+                            path: "main.py".to_string()
+                        },
+                        IgnorePath {
+                            path: "lib.rs".to_string()
+                        }
+                    ])
+                );
+            }
+            _ => panic!("not match"),
+        }
     }
     #[test]
     fn target_dirはwindows_osも対応できる() {
