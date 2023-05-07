@@ -19,11 +19,12 @@ struct Cli {
     #[clap(short, long)]
     target: Option<TargetDir>,
     #[clap(short, long, value_delimiter = ',')]
-    ignored: Option<IgnorePath>,
+    ignored: Option<Vec<IgnorePath>>,
 }
 
 impl Cli {
     fn count_line(&self) -> usize {
+        println!("{:#?}", self.ignored);
         let target = self
             .target
             .as_ref()
@@ -35,7 +36,7 @@ impl Cli {
                 && !&self
                     .ignored
                     .as_ref()
-                    .map(|i| i.contain(&f))
+                    .map(|i| i.iter().any(|i| i.do_ignore(f)))
                     .unwrap_or_default()
             {
                 acc += read_to_string(f).unwrap().lines().count();
@@ -92,19 +93,18 @@ impl FromStr for Extension {
 
 #[derive(Debug, Clone, PartialEq)]
 struct IgnorePath {
-    paths: Vec<String>,
+    path: String,
 }
 impl IgnorePath {
-    fn contain(&self, f: &PathBuf) -> bool {
-        let filename = f.to_str().unwrap_or_default();
-        self.paths.iter().any(|s| filename.contains(s.as_str()))
+    fn do_ignore(&self, f: &PathBuf) -> bool {
+        f.file_name().map(|f| f.to_str()) == Some(Some(&self.path))
     }
 }
 impl FromStr for IgnorePath {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self {
-            paths: s.split(",").map(|s| s.trim_start().to_string()).collect(),
+            path: s.trim().to_string(),
         })
     }
 }
@@ -136,6 +136,37 @@ pub fn all_file_path(root_dir_path: impl AsRef<Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn make_test_dir(dir_name: &str) {
+        std::fs::create_dir_all(dir_name).unwrap();
+        std::fs::write(format!("{}/main.rs", dir_name), "fn main() {}").unwrap();
+        std::fs::write(format!("{}/lib.rs", dir_name), "fn lib() {}").unwrap();
+        std::fs::write(format!("{}/main.py", dir_name), "def main(): pass").unwrap();
+    }
+    fn remove_dir(dir_name: &str) {
+        let path: &Path = dir_name.as_ref();
+        if path.exists() {
+            std::fs::remove_dir_all(dir_name).unwrap();
+        }
+    }
+    #[test]
+    #[ignore = "watchで無限ループになる"]
+    fn cliはディレクトリ内の指定した拡張子の行数をignoredを除いてカウントする() {
+        let dir = "test_dir";
+        remove_dir(dir);
+        let cli = Cli::parse_from(&[
+            "lc",
+            "-e",
+            "rs",
+            "-t",
+            dir,
+            "-i",
+            "main.rs, main.py, lib.rs",
+        ]);
+        make_test_dir(dir);
+        let count = cli.count_line();
+        remove_dir(dir);
+        assert_eq!(count, 0);
+    }
     #[test]
     #[ignore = "watchで無限ループになる"]
     fn cliはディレクトリ内の指定した拡張子の行数をカウントする() {
@@ -203,14 +234,7 @@ mod tests {
         assert_eq!(
             ignore_path,
             Ok(IgnorePath {
-                paths: vec!["target".to_string()]
-            })
-        );
-        let ignore_path = IgnorePath::from_str("target, Cargo");
-        assert_eq!(
-            ignore_path,
-            Ok(IgnorePath {
-                paths: vec!["target".to_string(), "Cargo".to_string()]
+                path: "target".to_string()
             })
         );
     }
